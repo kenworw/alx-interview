@@ -1,45 +1,70 @@
 #!/usr/bin/python3
-
-"""Script that reads stdin line by line and computes metrics"""
-
+"""
+Log parsing - a script that reads stdin line by line and computes metrics:
+    Input format:   <IP Address> - [<date>]
+                    "GET /projects/260 HTTP/1.1" <status code> <file size>
+    (if the format is not this one, the line must be skipped)
+    After every 10 lines and/or a keyboard interruption (CTRL + C)
+    print these statistics from the beginning:
+        Number of lines by status code: possible status code:
+            200, 301, 400, 401, 403, 404, 405 and 500
+        if a status code doesn’t appear or is not an integer,
+            don’t print anything for this status code
+        format: <status code>: <number>
+        status codes should be printed in ascending order
+"""
+import re
 import sys
+import signal
 
 
-def printsts(dic, size):
-    """ WWPrints information """
+def print_statistics(size, statusCount):
+    """
+    Prints logged statistics
+    """
     print("File size: {:d}".format(size))
-    for i in sorted(dic.keys()):
-        if dic[i] != 0:
-            print("{}: {:d}".format(i, dic[i]))
+    for key, value in sorted(statusCount.items()):
+        print("{}: {:d}".format(key, value))
 
 
-sts = {"200": 0, "301": 0, "400": 0, "401": 0, "403": 0,
-       "404": 0, "405": 0, "500": 0}
+def main():
+    """
+    Reads stdin
+    """
+    count: int = 0
+    size: int = 0
+    statusCount = {}
+    pattern = r'^(\d+\.\d+\.\d+\.\d+) - \[(.*?)\] "([^"]+)" (\d+) (\d+)$'
 
-count = 0
-size = 0
+    def handle_interrupt(signum, frame):
+        print_statistics(size, statusCount)
+        sys.exit(0)
 
-try:
+    signal.signal(signal.SIGINT, handle_interrupt)
+
     for line in sys.stdin:
-        if count != 0 and count % 10 == 0:
-            printsts(sts, size)
+        line = line.strip()
+        if line == "exit":
+            break
 
-        stlist = line.split()
-        count += 1
+        match = re.match(pattern, line)
 
-        try:
-            size += int(stlist[-1])
-        except:
-            pass
+        if match:
+            count += 1
+            if str(int(match.group(5))) == match.group(5):
+                size = size + int(match.group(5))
+            if str(int(match.group(4))) == match.group(4):
+                if str(match.group(4)) in statusCount:
+                    statusCount[str(match.group(4))] = statusCount[
+                            str(match.group(4))] + 1
+                else:
+                    statusCount[str(match.group(4))] = 1
 
-        try:
-            if stlist[-2] in sts:
-                sts[stlist[-2]] += 1
-        except:
-            pass
-    printsts(sts, size)
+        if count % 10 == 0:
+            print_statistics(size, statusCount)
+
+    print_statistics(size, statusCount)
 
 
-except KeyboardInterrupt:
-    printsts(sts, size)
-    raise
+if __name__ == "__main__":
+    main()
